@@ -1,8 +1,5 @@
 #include "compression.h"
 
-#include <fcntl.h>
-#include <io.h>
-
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -15,6 +12,7 @@ using namespace std;
 typedef unsigned int uint;
 typedef vector<unsigned char> bytes;
 
+//get the size of a file
 uint getFileSize(fstream& file) {
 	uint pos = file.tellg();
 	file.seekg(0, ios::end);
@@ -23,6 +21,8 @@ uint getFileSize(fstream& file) {
 	return size;
 }
 
+//read size bytes from the file and place them in a vector of unsigned chars
+//if what's left in the file is less than size, then read what's left in the file only
 bytes readFile(fstream& file, uint size) {
 	uint fileSize = getFileSize(file);
 	size = fileSize - file.tellg() < size ? fileSize - file.tellg() : size;
@@ -31,67 +31,65 @@ bytes readFile(fstream& file, uint size) {
 	return buf;
 }
 
+//write buf to the file
 void writeFile(fstream& file, bytes& buf) {
 	file.write(reinterpret_cast<char*>(buf.data()), buf.size());
 }
 
-//trys to delete a file, fails silently
-void tryDelete(wstring fileName) {
+//try to delete a file, fails silently
+void tryDelete(string fileName) {
 	try { filesystem::remove(fileName); }
 	catch(filesystem::filesystem_error) {}
 }
 
-//using wide chars and wide strings to support UTF-16 file names
-int wmain(int argc, wchar_t *argv[]) {
-	_setmode(_fileno(stdout), _O_U16TEXT); //fix for wcout
-	
+int main(int argc, char* argv[]) {
+	//parse args
 	if(argc == 1) {
-		wcout << L"No arguments provided" << endl;
+		cout << "No arguments provided" << endl;
 		return 0;
 	}
 	
-	//parse args
-	wstring arg = argv[1];
+	string arg = argv[1];
 	
-	if(arg == L"help") {
-		wcout << L"lz77.exe -args file" << endl;
-		wcout << L"   -d  decompress" << endl;
-		wcout << endl;
+	if(arg == "help") {
+		cout << "lz77.exe -args file" << endl;
+		cout << "   -d  decompress" << endl;
+		cout << endl;
 		return 0;
 	}
 	
 	bool decompress = false;
 	int fileArgIndex = 1;
 	
-	if(arg == L"-d") {
+	if(arg == "-d") {
 		decompress = true;
 		fileArgIndex = 2;
 	}
 	
 	if(fileArgIndex > argc - 1) {
-		wcout << L"No file path provided" << endl;
+		cout << "No file path provided" << endl;
 		return 0;
 	}
 	
-	wstring filePath = argv[fileArgIndex];
-	wstring newFilePath;
+	string filePath = argv[fileArgIndex];
+	string newFilePath;
 	
 	if(decompress) {
-		if(!filePath.ends_with(L".lz77")) {
-			wcout << L"The file provided is not compressed with this tool" << endl;
+		if(!filePath.ends_with(".lz77")) {
+			cout << "The file provided is not compressed with this too" << endl;
 			return 0;
 		}
 		
-		newFilePath = std::wstring(filePath.begin(), filePath.end() - 5);
+		newFilePath = std::string(filePath.begin(), filePath.end() - 5);
 		
 	} else {
-		newFilePath = filePath + L".lz77";
+		newFilePath = filePath + ".lz77";
 	}
 	
 	fstream file = fstream(filePath, ios::in | ios::binary);
 	
 	if(!file.is_open()) {
-		wcout << filePath << L": Failed to open file" << endl;
+		cout << filePath << ": Failed to open file" << endl;
 		return 0;
 	}
 	
@@ -99,24 +97,38 @@ int wmain(int argc, wchar_t *argv[]) {
 	
 	if(newFile.is_open()) {
 		uint fileSize = getFileSize(file);
+		bool failed = false;
 		
 		if(!decompress) {
-			while(file.tellg() < fileSize) {
-				bytes src = readFile(file, 1e7);
+			//read 10 MB at a time and compress it
+			#pragma omp parallel for ordered if(false) //add if(false) to disable parallelism
+			for(int i = 0; i < fileSize; i += 1e7) {
+				bytes src;
+				
+				#pragma omp ordered
+				{ src = readFile(file, 1e7); }
+				
 				bytes dst = lz77::compress(src);
 				
+				#pragma omp critical
 				if(dst.size() == 0) {
-					wcout << L"Compression failed" << endl;
-					file.close();
-					newFile.close();
-					tryDelete(newFilePath);
-					return 0;
+					failed = true;
 				}
 				
+				#pragma omp ordered
 				writeFile(newFile, dst);
 			}
 			
+			if(failed) {
+				cout << "Compression failed" << endl;
+				file.close();
+				newFile.close();
+				tryDelete(newFilePath);
+				return 0;
+			}
+			
 		} else {
+			//read the size of the compressed block (first 3 bytes), then read the compressed block and decompress it
 			while(file.tellg() < fileSize) {
 				bytes buf = readFile(file, 3);
 				uint size = ((uint) buf[0] << 16) + ((uint) buf[1] << 8) + ((uint) buf[2]);
@@ -125,7 +137,7 @@ int wmain(int argc, wchar_t *argv[]) {
 				bytes dst = lz77::decompress(src);
 				
 				if(dst.size() == 0) {
-					wcout << L"Decompression failed" << endl;
+					cout << "Decompression failed" << endl;
 					file.close();
 					newFile.close();
 					tryDelete(newFilePath);
@@ -137,7 +149,7 @@ int wmain(int argc, wchar_t *argv[]) {
 		}
 		
 	} else {
-		wcout << newFilePath << L": Failed to create new file" << endl;
+		cout << newFilePath << ": Failed to create new file" << endl;
 		file.close();
 		return 0;
 	}
@@ -148,22 +160,23 @@ int wmain(int argc, wchar_t *argv[]) {
 	float old_size = filesystem::file_size(filePath) / 1024.0;
 	float new_size = filesystem::file_size(newFilePath) / 1024.0;
 	
-	wcout << filePath << L" " << fixed << setprecision(2);
+	cout << filePath << " " << fixed << setprecision(2);
 	
 	if(old_size >= 1000) {
-		wcout << old_size / 1024.0 << L" MB";
+		cout << old_size / 1024.0 << " MB";
 	} else {
-		wcout << old_size << L" KB";
+		cout << old_size << " KB";
 	}
 	
-	wcout << " -> ";
+	cout << " -> ";
 	
 	if(new_size >= 1000) {
-		wcout << new_size / 1024.0 << L" MB";
+		cout << new_size / 1024.0 << " MB";
 	} else {
-		wcout << new_size << L" KB";
+		cout << new_size << " KB";
 	}
 	
-	wcout << endl << endl;
+	cout << endl << endl;
+	
 	return 0;
 }
