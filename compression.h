@@ -19,85 +19,10 @@ namespace lz77 {
 		}
 	}
 	
-	//variable length encoding of integers
-	//a new byte is added if the previous byte is 0b11111111 (255)
-	//the only exception is the first byte where the first bit is a flag
-	
-	//get a variable length integer from the buffer
-	int64_t getCount(bytes& src, int64_t& srcPos) {
-		int64_t n = 0;
-		int64_t b = 0;
-		
-		if(srcPos >= src.size()) {
-			return -1;
-		}
-		
-		b = src[srcPos++];
-		n = b & 0b01111111;
-		
-		if(n == 127) {
-			if(srcPos >= src.size()) {
-				return -1;
-			}
-			
-			b = src[srcPos++];
-			
-			while(b == 255) {
-				n += 255;
-				
-				if(srcPos >= src.size()) {
-					return -1;
-				}
-				
-				b = src[srcPos++];
-			}
-			
-			n += b;
-		}
-		
-		n++;
-		
-		return n;
-	}
-	
-	//put a variable length integer in the buffer
-	bool putCount(bytes& dst, int64_t& dstPos, int64_t n, uint64_t mask) {
-		if(dstPos >= dst.size()) {
-			return false;
-		}
-		
-		n--;
-		
-		if(n < 127) {
-			dst[dstPos++] = mask | n;
-			
-		} else {
-			dst[dstPos++] = mask | 0b01111111;
-			n -= 127;
-			
-			while(n > 255) {
-				if(dstPos >= dst.size()) {
-					return false;
-				}
-				
-				dst[dstPos++] = 255;
-				n -= 255;
-			}
-			
-			if(dstPos >= dst.size()) {
-				return false;
-			}
-			
-			dst[dstPos++] = n;
-		}
-		
-		return true;
-	}
-
 	//compresses src, returns an empty vector if compression fails
 	//ideally the failure scenario would never occur
 	bytes compress(bytes& src) {
-		bytes dst = bytes(6 + src.size() + src.size() / 255 + 1); //likely the maximum possible size of the resulting compressed block
+		bytes dst = bytes(6 + src.size() + src.size() / MAX_LITERAL + 1); //likely the maximum possible size of the resulting compressed block
 		Table table = Table(src);
 		
 		int64_t srcPos = 0;
@@ -130,47 +55,58 @@ namespace lz77 {
 			
 			//literal copy
 			//i.e. no compression/no match found
-			
-			if(lit > 0) {
-				//0ppppppp...
-				bool ok = putCount(dst, dstPos, lit, 0b00000000);
+			while(lit > 0) {
+				lit = getMin(lit, MAX_LITERAL);
 				
-				if(!ok) {
+				if(dstPos + lit + 1 > dst.size()) {
 					return bytes();
 				}
 				
+				//0ppppppp
+				dst[dstPos++] = lit - 1;
+				
 				copyBytes(src, srcPos, dst, dstPos, lit);
+				
+				lit = match.location - srcPos;
 			}
 			
 			//offset copy
 			int64_t nCopy = match.length;
 			int64_t offset = match.offset - 1; //subtraction is a part of the encoding for the offset
 			
-			//1ccccccc... oooooooo oooooooo
-			bool ok = putCount(dst, dstPos, nCopy, 0b10000000);
-			
-			if(!ok || dstPos + 2 > dst.size())  {
-				return bytes();
-			}
-			
-			dst[dstPos++] = offset >> 8;
-			dst[dstPos++] = offset;
-			
-			srcPos += match.length;
+			while(nCopy > 0) {
+				nCopy = getMin(nCopy, MAX_LENGTH);
+				
+				//1ccccccc oooooooo oooooooo
+				if(dstPos + 3 > dst.size())  {
+					return bytes();
+				}
+				
+				dst[dstPos++] = 0b10000000 | (nCopy - 4);
+				dst[dstPos++] = offset >> 8;
+				dst[dstPos++] = offset;
+				
+				srcPos += nCopy;
+				nCopy = match.location + match.length - srcPos;
+			} 
 		}
 		
 		//copy the remaining bytes at the end
 		int64_t lit = src.size() - srcPos;
 		
-		if(lit > 0) {
-			//0ppppppp...
-			bool ok = putCount(dst, dstPos, lit, 0b00000000);
+		while(lit > 0) {
+			lit = getMin(lit, MAX_LITERAL);
 			
-			if(!ok) {
+			if(dstPos + lit + 1 > dst.size()) {
 				return bytes();
 			}
 			
+			//0ppppppp
+			dst[dstPos++] = lit - 1;
+			
 			copyBytes(src, srcPos, dst, dstPos, lit);
+			
+			lit = src.size() - srcPos;
 		}
 		
 		//make compression header
@@ -198,17 +134,16 @@ namespace lz77 {
 		bytes dst = bytes(uncompressedSize);
 		
 		while(srcPos < src.size()) {
-			int64_t b = src[srcPos];
+			int64_t b = src[srcPos++];
 			
 			//offset copy
 			if(b & 0b10000000) {
-				//1ccccccc... oooooooo oooooooo
-				int64_t nCopy = getCount(src, srcPos); //1-128
-				
-				if(nCopy == -1 || srcPos + 2 > src.size()) {
+				if(srcPos + 2 > src.size()) {
 					return bytes();
 				}
 				
+				//1ccccccc oooooooo oooooooo
+				int64_t nCopy = (b & 0b01111111) + 4; //4-131
 				int64_t offset = ((src[srcPos++] << 8) | src[srcPos++]) + 1; //1-65536
 				
 				//DEBUG
@@ -224,10 +159,10 @@ namespace lz77 {
 				
 			//literal copy
 			} else {
-				//0ppppppp...
-				int64_t lit = getCount(src, srcPos);
+				//0ppppppp
+				int64_t lit = b + 1;
 				
-				if(lit == -1 || srcPos + lit > src.size() || dstPos + lit > dst.size())  {
+				if(srcPos + lit > src.size() || dstPos + lit > dst.size())  {
 					return bytes();
 				}
 				

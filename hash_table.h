@@ -10,6 +10,8 @@ namespace lz77 {
 	typedef vector<uint8_t> bytes;
 	
 	const int64_t MIN_LENGTH = 4;
+	const int64_t MAX_LENGTH = 131;
+	const int64_t MAX_LITERAL = 128;
 	const int64_t MAX_OFFSET = 65536;
 
 	//generic min
@@ -90,6 +92,13 @@ namespace lz77 {
 					int64_t offset = pos - prevPos;
 					
 					if(length >= MIN_LENGTH) {
+						//discard the last few bytes if they don't result in better compression
+						//(every encoded block should be >= MAX_LENGTH)
+						int64_t lastBlockLen = length % MAX_LENGTH;
+						if(length > MAX_LENGTH && lastBlockLen < MIN_LENGTH) {
+							length -= lastBlockLen;
+						}
+						
 						longestMatch = Match{location, length, offset};
 					}
 				}
