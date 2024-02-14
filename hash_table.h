@@ -91,16 +91,17 @@ namespace lz77 {
 					int64_t location = pos - llen;
 					int64_t offset = pos - prevPos;
 					
-					if(length >= MIN_LENGTH) {
-						//discard the last few bytes if they don't result in better compression
-						//(every encoded block should be >= MAX_LENGTH)
+					//discard the last few bytes if they don't result in better compression
+					//(every encoded block should be >= MAX_LENGTH)
+					if(length > MAX_LENGTH) {
 						int64_t lastBlockLen = length % MAX_LENGTH;
-						if(length > MAX_LENGTH && lastBlockLen < MIN_LENGTH) {
+						
+						if(lastBlockLen < MIN_LENGTH) {
 							length -= lastBlockLen;
 						}
-						
-						longestMatch = Match{location, length, offset};
 					}
+					
+					longestMatch = Match{location, length, offset};
 				}
 				
 				return longestMatch;
