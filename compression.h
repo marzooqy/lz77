@@ -1,39 +1,114 @@
-#include "hash_chain.h"
+#include "hash_table.h"
 
+#include <cstdint>
 #include <vector>
 #include <iostream>
-#include <string>
 
 namespace lz77 {
 
-	using namespace std;
-
-	typedef unsigned int uint;
-	typedef vector<unsigned char> bytes;
+	using std::vector;
+	using std::cout, std::endl;
+	
+	typedef vector<uint8_t> bytes;
 
 	//copy length bytes from src at srcPos to dst at dstPos and increment srcPos and dstPos
 	//copying one byte at a time is REQUIRED in some cases, otherwise decompression will not work
-	void copyBytes(bytes& src, uint& srcPos, bytes& dst, uint& dstPos, uint length) {
-		for(uint i = 0; i < length; i++) {
+	void copyBytes(bytes& src, int64_t& srcPos, bytes& dst, int64_t& dstPos, int64_t length) {
+		for(int64_t i = 0; i < length; i++) {
 			dst[dstPos++] = src[srcPos++];
 		}
+	}
+	
+	//variable length encoding of integers
+	//a new byte is added if the previous byte is 0b11111111 (255)
+	//the only exception is the first byte where the first bit is a flag
+	
+	//get a variable length integer from the buffer
+	int64_t getCount(bytes& src, int64_t& srcPos) {
+		int64_t n = 0;
+		int64_t b = 0;
+		
+		if(srcPos >= src.size()) {
+			return -1;
+		}
+		
+		b = src[srcPos++];
+		n = b & 0b01111111;
+		
+		if(n == 127) {
+			if(srcPos >= src.size()) {
+				return -1;
+			}
+			
+			b = src[srcPos++];
+			
+			while(b == 255) {
+				n += 255;
+				
+				if(srcPos >= src.size()) {
+					return -1;
+				}
+				
+				b = src[srcPos++];
+			}
+			
+			n += b;
+		}
+		
+		n++;
+		
+		return n;
+	}
+	
+	//put a variable length integer in the buffer
+	bool putCount(bytes& dst, int64_t& dstPos, int64_t n, uint64_t mask) {
+		if(dstPos >= dst.size()) {
+			return false;
+		}
+		
+		n--;
+		
+		if(n < 127) {
+			dst[dstPos++] = mask | n;
+			
+		} else {
+			dst[dstPos++] = mask | 0b01111111;
+			n -= 127;
+			
+			while(n > 255) {
+				if(dstPos >= dst.size()) {
+					return false;
+				}
+				
+				dst[dstPos++] = 255;
+				n -= 255;
+			}
+			
+			if(dstPos >= dst.size()) {
+				return false;
+			}
+			
+			dst[dstPos++] = n;
+		}
+		
+		return true;
 	}
 
 	//compresses src, returns an empty vector if compression fails
 	//ideally the failure scenario would never occur
 	bytes compress(bytes& src) {
-		bytes dst = bytes(6 + src.size() + src.size() / MAX_LITERAL + 1); //likely the maximum possible size of the resulting compressed block
+		bytes dst = bytes(6 + src.size() + src.size() / 255 + 1); //likely the maximum possible size of the resulting compressed block
 		Table table = Table(src);
 		
-		uint srcPos = 0;
-		uint dstPos = 6; //leave room for the uncompressed size and the compressed size
+		int64_t srcPos = 0;
+		int64_t dstPos = 6; //leave room for the uncompressed size and the compressed size
 		
 		//lit = number of bytes to copy from src with no compression
 		//nCopy = number of bytes to compress
 		//offset = offset from the current location in the decompressed input to where the pattern could be found
 		
-		uint i = 1;
-		uint lastMatchLocation = 0;
+		int64_t i = 1;
+		int64_t lastMatchLocation = 0;
 		
 		while(i <= src.size() - MIN_LENGTH) {
 			Match match = table.getLongestMatch(i, lastMatchLocation);
@@ -47,91 +122,60 @@ namespace lz77 {
 				continue;
 			}
 			
-			//copy bytes from src to dst until the location of the match is reached
-			uint lit = match.location - srcPos;
+			//DEBUG
+			//cout << match.location << " " << match.length << " " << match.offset << endl;
 			
-			//literal
+			//copy bytes from src to dst until the location of the match is reached
+			int64_t lit = match.location - srcPos;
+			
+			//literal copy
 			//i.e. no compression/no match found
-			while(lit > 0) {
-				//max possible value is MAX_LITERAL
-				lit = getMin(lit, MAX_LITERAL);
+			
+			if(lit > 0) {
+				//0ppppppp...
+				bool ok = putCount(dst, dstPos, lit, 0b00000000);
 				
-				//don't overflow the buffer
-				if(dstPos + lit + 1 > dst.size()) {
+				if(!ok) {
 					return bytes();
 				}
-				
-				//00pppppp
-				dst[dstPos++] = lit - 1;
 				
 				copyBytes(src, srcPos, dst, dstPos, lit);
-				
-				lit = match.location - srcPos;
 			}
 			
-			uint nCopy = match.length;
-			uint offset = match.offset - 1; //subtraction is a part of the encoding for the offset
+			//offset copy
+			int64_t nCopy = match.length;
+			int64_t offset = match.offset - 1; //subtraction is a part of the encoding for the offset
 			
-			//short
-			//shorts enable 3 byte matches which improves the compression ratio
-			if(nCopy <= 6 && offset < 4096) {
-				if(dstPos + 2 > dst.size())  {
-					return bytes();
-				}
-				
-				//01ccoooo oooooooo
-				dst[dstPos++] = 0b01000000 | ((nCopy - 3) << 4) | (offset >> 8);
-				dst[dstPos++] = offset;
-				
-			//medium
-			} else if(nCopy <= 67 && offset < 65536) {
-				if(dstPos + 3 > dst.size())  {
-					return bytes();
-				}
-				
-				//10cccccc oooooooo oooooooo
-				dst[dstPos++] = 0b10000000 | (nCopy - 4);
-				dst[dstPos++] = offset >> 8;
-				dst[dstPos++] = offset;
-				
-			//long
-			//useful for files with lots of redundancies
-			} else {
-				if(dstPos + 4 > dst.size())  {
-					return bytes();
-				}
-				
-				//11cccccc ccccoooo oooooooo oooooooo
-				dst[dstPos++] = 0b11000000 | ((nCopy - 5) >> 4);
-				dst[dstPos++] = ((nCopy - 5) << 4) | (offset >> 16);
-				dst[dstPos++] = offset >> 8;
-				dst[dstPos++] = offset;
-			}
+			//1ccccccc... oooooooo oooooooo
+			bool ok = putCount(dst, dstPos, nCopy, 0b10000000);
 			
-			srcPos += nCopy;
-		}
-		
-		//copy the remaining bytes at the end
-		uint lit = src.size() - srcPos;
-		while(lit > 0) {
-			//max possible value is MAX_LITERAL
-			lit = getMin(lit, MAX_LITERAL);
-			
-			if(dstPos + lit + 1 > dst.size()) {
+			if(!ok || dstPos + 2 > dst.size())  {
 				return bytes();
 			}
 			
-			//00pppppp
-			dst[dstPos++] = lit - 1;
+			dst[dstPos++] = offset >> 8;
+			dst[dstPos++] = offset;
+			
+			srcPos += match.length;
+		}
+		
+		//copy the remaining bytes at the end
+		int64_t lit = src.size() - srcPos;
+		
+		if(lit > 0) {
+			//0ppppppp...
+			bool ok = putCount(dst, dstPos, lit, 0b00000000);
+			
+			if(!ok) {
+				return bytes();
+			}
 			
 			copyBytes(src, srcPos, dst, dstPos, lit);
-			
-			lit = src.size() - srcPos;
 		}
 		
 		//make compression header
-		uint compressedSize = dstPos - 3;
-		uint uncompressedSize = src.size();
+		int64_t compressedSize = dstPos - 3;
+		int64_t uncompressedSize = src.size();
 		
 		dst[0] = compressedSize >> 16;
 		dst[1] = compressedSize >> 8;
@@ -147,76 +191,43 @@ namespace lz77 {
 	//decompresses src, returns an empty vector if decompression fails
 	//it should only fail on broken compressed files
 	bytes decompress(bytes& src) {
-		uint srcPos = 0;
-		uint dstPos = 0;
+		int64_t srcPos = 0;
+		int64_t dstPos = 0;
 		
-		uint uncompressedSize = ((uint) src[srcPos++] << 16) + ((uint) src[srcPos++] << 8) + ((uint) src[srcPos++]);
+		int64_t uncompressedSize = ((int64_t) src[srcPos++] << 16) + ((int64_t) src[srcPos++] << 8) + ((int64_t) src[srcPos++]);
 		bytes dst = bytes(uncompressedSize);
 		
-		uint b0, b1, b2, b3; //control characters
-		
 		while(srcPos < src.size()) {
-			b0 = src[srcPos++];
+			int64_t b = src[srcPos];
 			
 			//offset copy
-			if(b0 & 0b11000000) {
-				uint nCopy;
-				uint offset;
+			if(b & 0b10000000) {
+				//1ccccccc... oooooooo oooooooo
+				int64_t nCopy = getCount(src, srcPos); //1-128
 				
-				//short
-				if((b0 & 0b10000000) && (b0 & 0b01000000)) {
-					if(srcPos + 3 > src.size()) {
-						return bytes();
-					}
-					
-					b1 = src[srcPos++];
-					b2 = src[srcPos++];
-					b3 = src[srcPos++];
-					
-					//11cccccc ccccoooo oooooooo oooooooo
-					nCopy = (((b0 & 0b00111111) << 4) | ((b1 & 0b11110000) >> 4)) + 5; //5-1028
-					offset = (((b1 & 0b00001111) << 16) | (b2 << 8) | b3) + 1; //1-1048576
-					
-				//medium
-				} else if(b0 & 0b10000000) {
-					if(srcPos + 2 > src.size()) {
-						return bytes();
-					}
-					
-					b1 = src[srcPos++];
-					b2 = src[srcPos++];
-					
-					//10cccccc oooooooo oooooooo
-					nCopy = (b0 & 0b00111111) + 4; //4-131
-					offset = ((b1 << 8) | b2) + 1; //1-65536
-					
-				//long
-				} else {
-					if(srcPos + 1 > src.size()) {
-						return bytes();
-					}
-					
-					b1 = src[srcPos++];
-					
-					//01ccoooo oooooooo
-					nCopy = ((b0 & 0b00110000) >> 4) + 3; //3-6
-					offset = (((b0 & 0b00001111) << 8) | b1) + 1; //1-4096
+				if(nCopy == -1 || srcPos + 2 > src.size()) {
+					return bytes();
 				}
+				
+				int64_t offset = ((src[srcPos++] << 8) | src[srcPos++]) + 1; //1-65536
+				
+				//DEBUG
+				//cout << dstPos << " " << nCopy << " " << offset << endl;
 				
 				if(dstPos + nCopy > dst.size() || offset > dstPos)  {
 					return bytes();
 				}
 				
 				//copy bytes from an earlier location in the decompressed output
-				uint fromOffset = dstPos - offset;
+				int64_t fromOffset = dstPos - offset;
 				copyBytes(dst, fromOffset, dst, dstPos, nCopy);
 				
 			//literal copy
 			} else {
-				//00pppppp
-				uint lit = b0 + 1; //1-64
+				//0ppppppp...
+				int64_t lit = getCount(src, srcPos);
 				
-				if(srcPos + lit > src.size() || dstPos + lit > dst.size())  {
+				if(lit == -1 || srcPos + lit > src.size() || dstPos + lit > dst.size())  {
 					return bytes();
 				}
 				

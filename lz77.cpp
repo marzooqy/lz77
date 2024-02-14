@@ -1,5 +1,6 @@
 #include "compression.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -7,24 +8,29 @@
 #include <string>
 #include <vector>
 
-using namespace std;
+namespace filesystem = std::filesystem;
 
-typedef unsigned int uint;
-typedef vector<unsigned char> bytes;
+using std::vector, std::string;
+using std::fstream, std::ios;
+using std::cout, std::endl, std::fixed, std::setprecision;
+
+typedef vector<uint8_t> bytes;
+
+const int64_t BLOCK_SIZE = 1e7;
 
 //get the size of a file
-uint getFileSize(fstream& file) {
-	uint pos = file.tellg();
+int64_t getFileSize(fstream& file) {
+	int64_t pos = file.tellg();
 	file.seekg(0, ios::end);
-	uint size = file.tellg();
+	int64_t size = file.tellg();
 	file.seekg(pos, ios::beg);
 	return size;
 }
 
 //read size bytes from the file and place them in a vector of unsigned chars
 //if what's left in the file is less than size, then read what's left in the file only
-bytes readFile(fstream& file, uint size) {
-	uint fileSize = getFileSize(file);
+bytes readFile(fstream& file, int64_t size) {
+	int64_t fileSize = getFileSize(file);
 	size = fileSize - file.tellg() < size ? fileSize - file.tellg() : size;
 	bytes buf = bytes(size);
 	file.read(reinterpret_cast<char*>(buf.data()), size);
@@ -96,17 +102,17 @@ int main(int argc, char* argv[]) {
 	fstream newFile = fstream(newFilePath, ios::in | ios::out | ios::binary | ios::trunc);
 	
 	if(newFile.is_open()) {
-		uint fileSize = getFileSize(file);
+		int64_t fileSize = getFileSize(file);
 		bool failed = false;
 		
 		if(!decompress) {
 			//read 10 MB at a time and compress it
-			#pragma omp parallel for ordered if(false) //add if(false) to disable parallelism
-			for(int i = 0; i < fileSize; i += 1e7) {
+			#pragma omp parallel for ordered if(fileSize > BLOCK_SIZE)
+			for(int i = 0; i < fileSize; i += BLOCK_SIZE) {
 				bytes src;
 				
 				#pragma omp ordered
-				{ src = readFile(file, 1e7); }
+				{ src = readFile(file, BLOCK_SIZE); }
 				
 				bytes dst = lz77::compress(src);
 				
@@ -131,7 +137,7 @@ int main(int argc, char* argv[]) {
 			//read the size of the compressed block (first 3 bytes), then read the compressed block and decompress it
 			while(file.tellg() < fileSize) {
 				bytes buf = readFile(file, 3);
-				uint size = ((uint) buf[0] << 16) + ((uint) buf[1] << 8) + ((uint) buf[2]);
+				int64_t size = ((int64_t) buf[0] << 16) + ((int64_t) buf[1] << 8) + ((int64_t) buf[2]);
 				
 				bytes src = readFile(file, size);
 				bytes dst = lz77::decompress(src);
