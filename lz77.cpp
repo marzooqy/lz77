@@ -109,20 +109,22 @@ int main(int argc, char* argv[]) {
 			//read 10 MB at a time and compress it
 			#pragma omp parallel for ordered if(fileSize > BLOCK_SIZE)
 			for(int i = 0; i < fileSize; i += BLOCK_SIZE) {
-				bytes src;
-				
-				#pragma omp ordered
-				{ src = readFile(file, BLOCK_SIZE); }
-				
-				bytes dst = lz77::compress(src);
-				
-				#pragma omp critical
-				if(dst.size() == 0) {
-					failed = true;
+				if(!failed) {
+					bytes src;
+					
+					#pragma omp ordered
+					{ src = readFile(file, BLOCK_SIZE); }
+					
+					bytes dst = lz77::compress(src);
+					
+					if(dst.size() == 0) {
+						#pragma omp critical
+						failed = true;
+					}
+					
+					#pragma omp ordered
+					writeFile(newFile, dst);
 				}
-				
-				#pragma omp ordered
-				writeFile(newFile, dst);
 			}
 			
 			if(failed) {
