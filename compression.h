@@ -77,11 +77,11 @@ namespace lz77 {
 			while(nCopy > 0) {
 				nCopy = getMin(nCopy, MAX_LENGTH);
 				
-				//1ccccccc oooooooo oooooooo
 				if(dstPos + 3 > dst.size())  {
 					return bytes();
 				}
-				
+
+				//1ccccccc oooooooo oooooooo
 				dst[dstPos++] = 0b10000000 | (nCopy - 4);
 				dst[dstPos++] = offset >> 8;
 				dst[dstPos++] = offset;
@@ -160,7 +160,7 @@ namespace lz77 {
 			//literal copy
 			} else {
 				//0ppppppp
-				int64_t lit = b + 1;
+				int64_t lit = b + 1; //1-128
 				
 				if(srcPos + lit > src.size() || dstPos + lit > dst.size())  {
 					return bytes();
