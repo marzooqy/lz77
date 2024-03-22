@@ -1,8 +1,12 @@
 This an implementation of the LZ77 compression algorithm.
 
-**Techniques used:** LZ Compression | Hash Tables | Parallelism
+**Techniques used:** LZ Compression | Hash Tables
 
-**Optimizations:** Search the left of the buffer to improve the match (Backtracking)
+**Optimizations:**
+
+1- Encode very large matches by splitting them into multiple blocks
+
+2- Search the left of the buffer to improve the match (Backtracking)
 
 **Comparison of the compression ratio for [enwik8](https://www.mattmahoney.net/dc/text.html):**
 
