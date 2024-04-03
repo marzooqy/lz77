@@ -73,6 +73,7 @@ namespace lz77 {
 			//offset copy
 			int64_t nCopy = match.length;
 			int64_t offset = match.offset - 1; //subtraction is a part of the encoding for the offset
+			int64_t matchEnd = match.location + match.length;
 			
 			while(nCopy > 0) {
 				nCopy = getMin(nCopy, MAX_LENGTH);
@@ -87,7 +88,7 @@ namespace lz77 {
 				dst[dstPos++] = offset;
 				
 				srcPos += nCopy;
-				nCopy = match.location + match.length - srcPos;
+				nCopy = matchEnd - srcPos;
 			} 
 		}
 		
