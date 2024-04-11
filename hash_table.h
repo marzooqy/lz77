@@ -69,8 +69,8 @@ namespace lz77 {
 					int64_t lPrevPos = prevPos - 1;
 					int64_t lPos = pos - 1;
 					
-					//left match range: 0...lPrevPos, including 0
-					//right match range: lastLocation...lPos, including lastLocation
+					//left match possible range: 0...lPrevPos, including 0
+					//right match possible range: lastLocation...lPos, including lastLocation
 					int64_t max_llen = 1 + getMin(lPrevPos, lPos - lastLocation);
 					
 					while(llen < max_llen && buf[lPrevPos--] == buf[lPos--]) {
@@ -92,7 +92,7 @@ namespace lz77 {
 					int64_t offset = pos - prevPos;
 					
 					//discard the last few bytes if they don't result in better compression
-					//(every encoded block should be >= MAX_LENGTH)
+					//(every encoded block should be >= MIN_LENGTH)
 					if(length > MAX_LENGTH) {
 						int64_t lastBlockLen = length % MAX_LENGTH;
 						

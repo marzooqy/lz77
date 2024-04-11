@@ -58,7 +58,7 @@ int main(int argc, char* argv[]) {
 	string arg = argv[1];
 	
 	if(arg == "help") {
-		cout << "lz77.exe -args file" << endl;
+		cout << "lz77 -arg file" << endl;
 		cout << "   -d  decompress" << endl;
 		cout << endl;
 		return 0;
