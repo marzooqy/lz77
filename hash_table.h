@@ -7,7 +7,7 @@ namespace lz77 {
 	using std::vector;
 	using std::cout, std::endl;
 	
-	typedef vector<uint8_t> bytes;
+	typedef vector<unsigned char> bytes;
 	
 	const int64_t MIN_LENGTH = 4;
 	const int64_t MAX_LENGTH = 131;
@@ -71,7 +71,7 @@ namespace lz77 {
 					
 					//left match possible range: 0...lPrevPos, including 0
 					//right match possible range: lastLocation...lPos, including lastLocation
-					int64_t max_llen = 1 + getMin(lPrevPos, lPos - lastLocation);
+					int64_t max_llen = getMin(lPrevPos - 0, lPos - lastLocation) + 1;
 					
 					while(llen < max_llen && buf[lPrevPos--] == buf[lPos--]) {
 						llen++;

@@ -9,7 +9,7 @@ namespace lz77 {
 	using std::vector;
 	using std::cout, std::endl;
 	
-	typedef vector<uint8_t> bytes;
+	typedef vector<unsigned char> bytes;
 
 	//copy length bytes from src at srcPos to dst at dstPos and increment srcPos and dstPos
 	//copying one byte at a time is REQUIRED in some cases, otherwise decompression will not work
@@ -26,7 +26,7 @@ namespace lz77 {
 		Table table = Table(src);
 		
 		int64_t srcPos = 0;
-		int64_t dstPos = 6; //leave room for the uncompressed size and the compressed size
+		int64_t dstPos = 0;
 		
 		//lit = number of bytes to copy from src with no compression
 		//nCopy = number of bytes to compress
@@ -110,29 +110,15 @@ namespace lz77 {
 			lit = src.size() - srcPos;
 		}
 		
-		//make compression header
-		int64_t compressedSize = dstPos - 3;
-		int64_t uncompressedSize = src.size();
-		
-		dst[0] = compressedSize >> 16;
-		dst[1] = compressedSize >> 8;
-		dst[2] = compressedSize;
-		dst[3] = uncompressedSize >> 16;
-		dst[4] = uncompressedSize >> 8;
-		dst[5] = uncompressedSize;
-		
 		dst.resize(dstPos);
 		return dst;
 	}
 
 	//decompresses src, returns an empty vector if decompression fails
 	//it should only fail on broken compressed files
-	bytes decompress(bytes& src) {
+	bytes decompress(bytes& src, bytes& dst) {
 		int64_t srcPos = 0;
 		int64_t dstPos = 0;
-		
-		int64_t uncompressedSize = ((int64_t) src[srcPos++] << 16) + ((int64_t) src[srcPos++] << 8) + ((int64_t) src[srcPos++]);
-		bytes dst = bytes(uncompressedSize);
 		
 		while(srcPos < src.size()) {
 			int64_t b = src[srcPos++];
