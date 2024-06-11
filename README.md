@@ -1,6 +1,6 @@
 This an implementation of the LZ77 compression algorithm.
 
-**Techniques used:** LZ Compression | Hash Tables | Parallelism
+**Techniques used:** LZ Compression | Hash Tables | Parallelism | Variable Length Integers
 
 **Optimizations:**
 
@@ -15,7 +15,9 @@ This an implementation of the LZ77 compression algorithm.
 | lzma2 | 5 | 0.26 |
 | deflate | 5 | 0.35 |
 | zstd | 3 | 0.35 |
+| **lz77** | **n/a** | **0.54** |
 | lz4 | 1 | 0.57 |
-| **lz77** | **n/a** | **0.57** |
 
 The compression ratio is not as good as the other algorithms due to the fact that this implementation only uses LZ compression without any entropy encoding.
+
+The algorithm is also optimized for speed rather than compression ratio.
