@@ -249,7 +249,7 @@ int main(int argc, char* argv[]) {
 				omp_unset_lock(&r_lock);
 
 				bytes dst = lz77::decompress(src);
-				
+
 				if(dst.size() > 0) {
 					#pragma omp ordered
 					writeFile(newFile, dst);
