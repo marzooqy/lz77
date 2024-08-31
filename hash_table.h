@@ -10,9 +10,9 @@ namespace lz77 {
     typedef vector<unsigned char> bytes;
 
     const uint32_t MIN_LENGTH = 4;
-
-    #define ONES(n) ((uint32_t) 1 << n) - 1
-    const uint32_t OFFSETS[7] = {0, 0, 0, ONES(7), ONES(14), ONES(21), ONES(28)};
+    const uint32_t MAX_LENGTH = 127;
+    const uint32_t MAX_LITERAL = 127;
+    const uint32_t MAX_OFFSET = 65535;
 
     //generic min
     template<typename T1, typename T2>
@@ -57,8 +57,9 @@ namespace lz77 {
             Match getLongestMatch(uint32_t pos, uint32_t lastLocation) {
                 Match longestMatch = Match{0, 0, 0};
                 uint32_t prevPos = addTo(pos);
+                uint32_t offset = pos - prevPos;
 
-                if(prevPos != -1) {
+                if(prevPos != -1 && offset <= MAX_OFFSET) {
                     //search to the right
                     uint32_t rlen = 0;
                     uint32_t rPrevPos = prevPos;
@@ -86,9 +87,12 @@ namespace lz77 {
 
                     uint32_t length = llen + rlen;
                     uint32_t location = pos - llen;
-                    uint32_t offset = pos - prevPos;
 
-                    if(length > 5 || offset <= OFFSETS[length]) {
+                    if(length > MAX_LENGTH) {
+                        length -= length & 0b00000011;
+                    }
+
+                    if(length >= MIN_LENGTH) {
                         longestMatch = Match{location, length, offset};
                     }
                 }

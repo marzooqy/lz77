@@ -11,61 +11,6 @@ namespace lz77 {
 
     typedef vector<unsigned char> bytes;
 
-    uint32_t getInt(bytes& buf, uint32_t& pos) {
-        if(pos >= buf.size()) {
-            return -1;
-        }
-
-        uint32_t b = buf[pos++];
-        uint32_t n = 0;
-        uint32_t i = 0;
-
-        while(b & 0b10000000) {
-            n |= (b & 0b01111111) << (7 * i);
-
-            if(pos >= buf.size()) {
-                return -1;
-            }
-
-            b = buf[pos++];
-            i++;
-        }
-
-        return n | (b << (7 * i));
-    }
-
-    void putInt(bytes& buf, uint32_t& pos, uint32_t n) {
-        while(n > 0b01111111) {
-            buf[pos++] = 0b10000000 | n;
-            n >>= 7;
-        }
-
-        buf[pos++] = n;
-    }
-
-    uint32_t getLength(bytes& buf, uint32_t& pos, uint32_t b) {
-        if(b & 0b01000000) {
-            uint32_t n = getInt(buf, pos);
-
-            if(n == -1) {
-                return n;
-            }
-
-            return (n << 6) | (b & 0b00111111);
-        }
-
-        return b & 0b00111111;
-    }
-
-    void putLength(bytes& buf, uint32_t& pos, uint32_t n, uint32_t mask) {
-        if(n > 0b00111111) {
-            buf[pos++] = 0b01000000 | mask | (n & 0b00111111);
-            putInt(buf, pos, n >> 6);
-        } else {
-            buf[pos++] = mask | n;
-        }
-    }
-
     //copy length bytes from src at srcPos to dst at dstPos and increment srcPos and dstPos
     //copying one byte at a time is REQUIRED in some cases, otherwise decompression will not work
     void copyBytes(bytes& src, uint32_t& srcPos, bytes& dst, uint32_t& dstPos, uint32_t length) {
@@ -77,7 +22,7 @@ namespace lz77 {
     //compresses src, returns an empty vector if compression fails
     //ideally the failure scenario would never occur
     bytes compress(bytes& src) {
-        bytes dst = bytes(6 + src.size() + src.size() / 63 + 1);
+        bytes dst = bytes(6 + src.size() + src.size() / 128 + 1);
         Table table = Table(src);
 
         uint32_t srcPos = 0;
@@ -98,14 +43,51 @@ namespace lz77 {
 
                 //literal copy
                 //i.e. no compression/no match found
+                while(lit > MAX_LITERAL) {
+                    if(dstPos + lit + 1 > dst.size()) {
+                        return bytes();
+                    }
+
+                    dst[dstPos++] = 0x7f;
+                    copyBytes(src, srcPos, dst, dstPos, MAX_LITERAL);
+
+                    lit -= MAX_LITERAL;
+                }
+
                 if(lit > 0) {
-                    putLength(dst, dstPos, lit, 0b00000000);
+                    if(dstPos + lit + 1 > dst.size()) {
+                        return bytes();
+                    }
+
+                    dst[dstPos++] = lit;
                     copyBytes(src, srcPos, dst, dstPos, lit);
                 }
 
                 //offset copy
-                putLength(dst, dstPos, match.length, 0b10000000);
-                putInt(dst, dstPos, match.offset);
+                uint32_t len = match.length;
+                uint32_t offset = match.offset;
+
+                while(len > MAX_LENGTH) {
+                    if(dstPos + 3 > dst.size()) {
+                        return bytes();
+                    }
+
+                    dst[dstPos++] = 0xff;
+                    dst[dstPos++] = offset >> 8;
+                    dst[dstPos++] = offset;
+
+                    len -= MAX_LENGTH;
+                }
+
+                if(len > 0) {
+                    if(dstPos + 3 > dst.size()) {
+                        return bytes();
+                    }
+
+                    dst[dstPos++] = 0b10000000 | len;
+                    dst[dstPos++] = offset >> 8;
+                    dst[dstPos++] = offset;
+                }
 
                 srcPos += match.length;
 
@@ -121,7 +103,11 @@ namespace lz77 {
         uint32_t lit = src.size() - srcPos;
 
         if(lit > 0) {
-            putLength(dst, dstPos, lit, 0b00000000);
+            if(dstPos + lit + 1 > dst.size()) {
+                return bytes();
+            }
+
+            dst[dstPos++] = lit;
             copyBytes(src, srcPos, dst, dstPos, lit);
         }
 
@@ -148,24 +134,29 @@ namespace lz77 {
 
             //offset copy
             if(b & 0b10000000) {
-                uint32_t length = getLength(src, srcPos, b);
-                uint32_t offset = getInt(src, srcPos);
+                if(srcPos + 2 > src.size()) {
+                    return bytes();
+                }
+
+                uint32_t len = b & 0b01111111;
+                uint32_t offset = ((uint32_t) src[srcPos++] << 8) + src[srcPos++];
 
                 //DEBUG
-                //cout << dstPos << " " << length << " " << offset << endl;
+                //cout << dstPos << " " << len << " " << offset << endl;
 
-                if(length == -1 || offset == -1 || dstPos + length > dst.size() || offset > dstPos)  {
+                if(dstPos + len > dst.size() || offset > dstPos)  {
                     return bytes();
                 }
 
                 //copy bytes from an earlier location in the decompressed output
                 uint32_t fromOffset = dstPos - offset;
-                copyBytes(dst, fromOffset, dst, dstPos, length);
+                copyBytes(dst, fromOffset, dst, dstPos, len);
 
             //literal copy
             } else {
-                uint32_t lit = getLength(src, srcPos, b);
-                if(lit == -1 || srcPos + lit > src.size() || dstPos + lit > dst.size())  {
+                uint32_t lit = b;
+
+                if(srcPos + lit > src.size() || dstPos + lit > dst.size())  {
                     return bytes();
                 }
 
