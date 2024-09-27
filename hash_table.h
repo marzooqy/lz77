@@ -89,7 +89,7 @@ namespace lz77 {
                     uint32_t location = pos - llen;
 
                     if(length > MAX_LENGTH) {
-                        length -= length & MIN_LENGTH;
+                        length -= length % MIN_LENGTH;
                     }
 
                     if(length >= MIN_LENGTH) {
