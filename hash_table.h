@@ -73,13 +73,13 @@ namespace lz77 {
                     //optimization: search to the left of the current position
                     //improves the compression ratio
                     uint32_t llen = 0;
-                    uint32_t lPrevPos = prevPos - 1;
-                    uint32_t lPos = pos - 1;
 
-                    if(prevPos > 0 && pos > lastLocation) {
-                        //left match possible range: 0...lPrevPos, including 0
-                        //right match possible range: lastLocation...lPos, including lastLocation
-                        uint32_t max_llen = getMin(lPrevPos - 0, lPos - lastLocation) + 1;
+                    if(rlen > 0 && prevPos > 0 && pos > lastLocation) {
+                        //left match possible range: [0, prevPos)
+                        //right match possible range: [lastLocation, pos)
+                        uint32_t max_llen = getMin(prevPos - 0, pos - lastLocation);
+                        uint32_t lPrevPos = prevPos - 1;
+                        uint32_t lPos = pos - 1;
                         while(llen < max_llen && buf[lPrevPos--] == buf[lPos--]) {
                             llen++;
                         }
