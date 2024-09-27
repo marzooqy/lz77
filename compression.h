@@ -19,8 +19,7 @@ namespace lz77 {
         }
     }
 
-    //compresses src, returns an empty vector if compression fails
-    //ideally the failure scenario would never occur
+    //compresse src
     bytes compress(bytes& src) {
         bytes dst = bytes(3 + src.size() + src.size() / MAX_LITERAL + 1);
         Table table = Table(src);
@@ -101,7 +100,7 @@ namespace lz77 {
         return dst;
     }
 
-    //decompresses src, returns an empty vector if decompression fails
+    //decompress src, return an empty vector if decompression fails
     //it should only fail on broken compressed files
     bytes decompress(bytes& src) {
         uint32_t srcPos = 3;
