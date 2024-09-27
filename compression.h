@@ -22,7 +22,7 @@ namespace lz77 {
     //compresses src, returns an empty vector if compression fails
     //ideally the failure scenario would never occur
     bytes compress(bytes& src) {
-        bytes dst = bytes(6 + src.size() + src.size() / 128 + 1);
+        bytes dst = bytes(3 + src.size() + src.size() / MAX_LITERAL + 1);
         Table table = Table(src);
 
         uint32_t srcPos = 0;
@@ -44,10 +44,6 @@ namespace lz77 {
                 //literal copy
                 //i.e. no compression/no match found
                 while(lit > MAX_LITERAL) {
-                    if(dstPos + lit + 1 > dst.size()) {
-                        return bytes();
-                    }
-
                     dst[dstPos++] = 0x7f;
                     copyBytes(src, srcPos, dst, dstPos, MAX_LITERAL);
 
@@ -55,10 +51,6 @@ namespace lz77 {
                 }
 
                 if(lit > 0) {
-                    if(dstPos + lit + 1 > dst.size()) {
-                        return bytes();
-                    }
-
                     dst[dstPos++] = lit;
                     copyBytes(src, srcPos, dst, dstPos, lit);
                 }
@@ -68,10 +60,6 @@ namespace lz77 {
                 uint32_t offset = match.offset;
 
                 while(len > MAX_LENGTH) {
-                    if(dstPos + 3 > dst.size()) {
-                        return bytes();
-                    }
-
                     dst[dstPos++] = 0xff;
                     dst[dstPos++] = offset >> 8;
                     dst[dstPos++] = offset;
@@ -80,10 +68,6 @@ namespace lz77 {
                 }
 
                 if(len > 0) {
-                    if(dstPos + 3 > dst.size()) {
-                        return bytes();
-                    }
-
                     dst[dstPos++] = 0b10000000 | len;
                     dst[dstPos++] = offset >> 8;
                     dst[dstPos++] = offset;
@@ -103,10 +87,6 @@ namespace lz77 {
         uint32_t lit = src.size() - srcPos;
 
         if(lit > 0) {
-            if(dstPos + lit + 1 > dst.size()) {
-                return bytes();
-            }
-
             dst[dstPos++] = lit;
             copyBytes(src, srcPos, dst, dstPos, lit);
         }
