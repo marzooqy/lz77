@@ -1,6 +1,6 @@
 This an implementation of the LZ77 compression algorithm.
 
-**Techniques used:** LZ Compression | Hash Tables | Parallelism
+**Techniques used:** LZ Compression | Hash Tables
 
 **Optimizations:**
 

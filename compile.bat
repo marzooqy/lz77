@@ -1,7 +1,4 @@
-call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-
-cl /EHsc /std:c++20 /openmp /O2 lz77.cpp
-
-del lz77.obj
-
+g++ -c -std=c++20 -O3 lz77.cpp
+g++ lz77.o -o lz77.exe
+del lz77.o
 pause

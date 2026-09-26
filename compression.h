@@ -21,11 +21,11 @@ namespace lz77 {
 
     //compresse src
     bytes compress(bytes& src) {
-        bytes dst = bytes(3 + src.size() + src.size() / MAX_LITERAL + 1);
+        bytes dst = bytes(6 + src.size() + src.size() / MAX_LITERAL + 1);
         Table table = Table(src);
 
         uint32_t srcPos = 0;
-        uint32_t dstPos = 3;
+        uint32_t dstPos = 6;
 
         uint32_t i = 0;
         uint32_t lastMatchLocation = 0;
@@ -90,11 +90,17 @@ namespace lz77 {
             copyBytes(src, srcPos, dst, dstPos, lit);
         }
 
-        //write the uncompressed size at the start
+        //write the compressed and uncompressed size at the start
+        uint32_t compressedSize = dstPos - 3;
         uint32_t uncompressedSize = src.size();
-        dst[0] = uncompressedSize >> 16;
-        dst[1] = uncompressedSize >> 8;
-        dst[2] = uncompressedSize;
+
+        dst[0] = compressedSize >> 16;
+        dst[1] = compressedSize >> 8;
+        dst[2] = compressedSize;
+
+        dst[3] = uncompressedSize >> 16;
+        dst[4] = uncompressedSize >> 8;
+        dst[5] = uncompressedSize;
 
         dst.resize(dstPos);
         return dst;
